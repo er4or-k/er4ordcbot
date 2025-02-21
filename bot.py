@@ -1,25 +1,32 @@
 import discord
+from discord.ext import commands
 from discord import app_commands
 import os
-import subprocess 
+import subprocess  # Import subprocess to run app.py
 
-subprocess.Popen(['python', 'app.py'])
-TOKEN = "OTUyNDIyMjMzNTYzODczMzQy.GGaP3s.SoGN50Ic7KdYmEUzu8kY2iy0Ld8PCa-qIUxyaI" # Get token from environment variable
+TOKEN = os.getenv("OTUyNDIyMjMzNTYzODczMzQy.GGaP3s.SoGN50Ic7KdYmEUzu8kY2iy0Ld8PCa-qIUxyaI")  # Get token from environment variable
 
-class MyBot(discord.Client):
-    def __init__(self):
-        super().__init__(intents=discord.Intents.default())
-        self.tree = app_commands.CommandTree(self)
+# Start the web server (app.py) in a separate process
+subprocess.Popen(["python", "app.py"])
 
-    async def on_ready(self):
-        await self.tree.sync()
-        await self.change_presence(activity=discord.Game("Bot is currently in development"))
-        print(f"Logged in as {self.user}")
+# Define bot with prefix and slash command support
+intents = discord.Intents.default()
+bot = commands.Bot(command_prefix="!!", intents=intents)
 
-bot = MyBot()
+@bot.event
+async def on_ready():
+    await bot.tree.sync()
+    await bot.change_presence(activity=discord.Game("Bot is currently in development"))
+    print(f"Logged in as {bot.user}")
 
+# Slash Command: /help
 @bot.tree.command(name="help", description="Shows bot status")
 async def help_command(interaction: discord.Interaction):
     await interaction.response.send_message("Bot is currently inactive.", ephemeral=True)
+
+# Prefix Command: !!about
+@bot.command(name="about")
+async def about(ctx):
+    await ctx.send("This Bot Is Created By @er4or.k.")
 
 bot.run(TOKEN)
