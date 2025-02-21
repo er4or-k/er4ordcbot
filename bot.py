@@ -4,7 +4,7 @@ from discord import app_commands
 import os
 import subprocess  # Import subprocess to run app.py
 
-TOKEN = os.getenv("OTUyNDIyMjMzNTYzODczMzQy.GGaP3s.SoGN50Ic7KdYmEUzu8kY2iy0Ld8PCa-qIUxyaI")  # Get token from environment variable
+TOKEN = os.getenv("BOT_TOKEN")  # Get token from environment variable
 
 # Start the web server (app.py) in a separate process
 subprocess.Popen(["python", "app.py"])
