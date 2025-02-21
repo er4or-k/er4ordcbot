@@ -1,7 +1,9 @@
 import discord
 from discord import app_commands
 import os
+import subprocess 
 
+subprocess.Popen(['python', 'app.py'])
 TOKEN = "OTUyNDIyMjMzNTYzODczMzQy.GGaP3s.SoGN50Ic7KdYmEUzu8kY2iy0Ld8PCa-qIUxyaI" # Get token from environment variable
 
 class MyBot(discord.Client):
