@@ -8,7 +8,7 @@ TOKEN = os.getenv("BOT_TOKEN")  # Get token from environment variable
 
 # Start the web server (app.py) in a separate process
 subprocess.Popen(["python", "app.py"])
-
+#hlo
 # Define bot with prefix and slash command support
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!!", intents=intents)
