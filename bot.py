@@ -3,8 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 import os
 import subprocess  # Import subprocess to run app.py
-
-TOKEN = os.getenv("BOT_TOKEN")  # Get token from environment variable
+from config import BOT_TOKEN  # Get token from environment variable
 
 # Start the web server (app.py) in a separate process
 subprocess.Popen(["python", "app.py"])
@@ -29,4 +28,4 @@ async def help_command(interaction: discord.Interaction):
 async def about(ctx):
     await ctx.send("This Bot Is Created By @er4or.k.")
 
-bot.run(TOKEN)
+bot.run(BOT_TOKEN)
