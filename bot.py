@@ -22,7 +22,7 @@ async def on_ready():
 # Slash Command: /help
 @bot.tree.command(name="help", description="Shows bot status")
 async def help_command(interaction: discord.Interaction):
-    await interaction.response.send_message("Bot is currently inactive.", ephemeral=True)
+    await interaction.response.send_message("Bot is currently inactive.")
 
 # Prefix Command: !!about
 @bot.command(name="about")
