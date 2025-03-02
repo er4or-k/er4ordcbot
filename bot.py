@@ -15,9 +15,11 @@ async def on_ready():
     # Load Cogs
     try:
         await bot.load_extension("mods.kick")
-        print("✅ Kick cog loaded successfully.")
+        await bot.load_extension("mods.ban")
+        await bot.load_extension("mods.afk")
+        print("✅cog loaded successfully.")
     except Exception as e:
-        print(f"❌ Failed to load kick cog: {e}")
+        print(f"❌ Failed to load cog: {e}")
 
     # Syncing Slash Commands
     try:
