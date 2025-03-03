@@ -17,6 +17,8 @@ async def on_ready():
         await bot.load_extension("mods.kick")
         await bot.load_extension("mods.ban")
         await bot.load_extension("mods.afk")
+        await bot.load_extension("mods.vote")
+        await bot.load_extension("mods.mute")
         print("✅cog loaded successfully.")
     except Exception as e:
         print(f"❌ Failed to load cog: {e}")
@@ -31,12 +33,12 @@ async def on_ready():
     # Set bot status
     await bot.change_presence(activity=discord.Game("Bot is currently in development"))
 
-# Slash Command: /help
-@bot.tree.command(name="help", description="Shows bot status")
-async def help_command(interaction: discord.Interaction):
+# Slash Command: /status
+@bot.tree.command(name="status", description="Shows bot status")
+async def status_command(interaction: discord.Interaction):
     embed = discord.Embed(
         title="📌 Bot Status",
-        description="Bot is currently inactive!!",
+        description="Bot is currently in development state (Running✅)!!",
         color=discord.Color.blue()
     )
     await interaction.response.send_message(embed=embed)
