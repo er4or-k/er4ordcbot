@@ -19,6 +19,7 @@ async def on_ready():
         await bot.load_extension("mods.afk")
         await bot.load_extension("mods.vote")
         await bot.load_extension("mods.mute")
+        await bot.load_extension("mods.warn")
         print("✅cog loaded successfully.")
     except Exception as e:
         print(f"❌ Failed to load cog: {e}")
