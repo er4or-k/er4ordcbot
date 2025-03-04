@@ -4,28 +4,29 @@ from discord import app_commands
 from datetime import timedelta, datetime
 import re
 
+from pymongo import MongoClient
+
+client = MongoClient("mongodb+srv://kiranpoo7ary:FPcsopE32NSR1zfP@cluster0.leb3q.mongodb.net/afk_db?retryWrites=true&w=majority&tlsAllowInvalidCertificates=true")
+db = client["er4orbot"]
+mute_collection = db["mutes"]
 
 def parse_duration(duration: str) -> int:
-    match = re.match(r"(\d+)([mhd])", duration.lower())  # Match format like '1h', '30m', '2d'
-    
+    match = re.match(r"(\d+)([mhd])", duration.lower())
     if not match:
-        raise ValueError("Invalid time format. Use `10m`, `1h`, `2d`, etc.")
-    
+        raise ValueError("Invalid time format. Use `10m`, `1h`, `2d`.")  
     value, unit = int(match.group(1)), match.group(2)
-
+    
     if unit == "m":
-        return value  # Minutes
+        return value
     elif unit == "h":
-        return value * 60  # Convert hours to minutes
+        return value * 60
     elif unit == "d":
-        return value * 1440  # Convert days to minutes
-
+        return value * 1440
 
 class Mute(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.check_mutes.start()
-        self.muted_users = {}  # Stores {user_id: (end_time, channel_id, guild_id)}
 
     def cog_unload(self):
         self.check_mutes.cancel()
@@ -33,185 +34,118 @@ class Mute(commands.Cog):
     @tasks.loop(seconds=30)
     async def check_mutes(self):
         now = datetime.utcnow()
-        to_remove = []
-        for user_id, (end_time, channel_id, guild_id) in self.muted_users.items():
+        mutes = list(mute_collection.find({}))
+
+        for mute in mutes:
+            end_time = mute["end_time"]
             if now >= end_time:
-                guild = self.bot.get_guild(guild_id)  # Get the guild dynamically
+                guild = self.bot.get_guild(mute["guild_id"])
                 if guild:
-                    user = guild.get_member(user_id)
-                    if user:
-                        await user.timeout(None, reason="Mute expired")
-                        channel = guild.get_channel(channel_id)
+                    member = guild.get_member(mute["user_id"])
+                    if member:
+                        await member.timeout(None, reason="Mute Expired")
+                        channel = guild.get_channel(mute["channel_id"])
                         if channel:
                             embed = discord.Embed(
                                 title="🔊 Mute Expired",
-                                description=f"✅ **{user.mention} has been unmuted.**",
+                                description=f"✅ {member.mention} has been unmuted.",
                                 color=discord.Color.green()
                             )
                             await channel.send(embed=embed)
-                to_remove.append(user_id)
-        for user_id in to_remove:
-            del self.muted_users[user_id]
+                mute_collection.delete_one({"user_id": mute["user_id"]})
 
-    @commands.command(name="mute")
-    async def mute(self, ctx, user: discord.Member, duration: str, *, reason: str = "No reason provided"):
-
-        if user == ctx.author:
-            embed = discord.Embed(
-                title="❌ Error",
-                description=f"{ctx.author.mention}, You cannot mute yourself!",
-                color=discord.Color.red()
-            )
-            return await ctx.send(embed=embed)
-
+    async def mute_user(self, ctx, user, duration, reason):
         try:
-            duration_td = parse_duration(str(duration))  # Ensure `duration` is passed as a string like "10m", "1h", "1d"
-            if duration_td is None:
-                embed = discord.Embed(
-                    title="❌ Error",
-                    description=f"{ctx.author.mention}, Invalid duration format! Use `Xm`, `Xh`, or `Xd` (e.g., `10m`, `2h`, `1d`).",
-                    color=discord.Color.red()
-                )
-                return await ctx.send(embed=embed)
-
+            duration_td = parse_duration(duration)
+            end_time = datetime.utcnow() + timedelta(minutes=duration_td)
             await user.timeout(timedelta(minutes=duration_td), reason=reason)
-            self.muted_users[user.id] = (datetime.utcnow() + timedelta(minutes=duration_td), ctx.channel.id, ctx.guild.id)
+            
+            mute_collection.insert_one({
+                "user_id": user.id,
+                "guild_id": ctx.guild.id,
+                "channel_id": ctx.channel.id,
+                "end_time": end_time,
+            })
 
             embed = discord.Embed(
                 title="🔇 User Muted",
-                description=f"✅ **{user.mention} has been muted for `{duration}` minutes.**",
+                description=f"✅ **{user.mention} has been muted for `{duration}`.**",
                 color=discord.Color.orange()
             )
             embed.add_field(name="Reason", value=reason, inline=False)
-            await ctx.send(embed=embed)
+
+            if isinstance(ctx, discord.Interaction):
+                await ctx.response.send_message(embed=embed)
+            else:
+                await ctx.send(embed=embed)
+
         except discord.Forbidden:
-            embed = discord.Embed(
-                title="❌ Error",
-                description=f"{ctx.author.mention}, I don't have permission to mute {user.mention}!",
+            await ctx.send(embed=discord.Embed(
+                title="Mute Failed ❌",
+                description=f"I don't have permission to mute {user.mention}!",
                 color=discord.Color.red()
-            )
-            await ctx.send(embed=embed)
-        except Exception as e:
-            embed = discord.Embed(
-                title="❌ Error",
-                description=f"{ctx.author.mention}, An error occurred while muting {user.mention}: `{e}`",
+            ))
+
+    @commands.command(name="mute")
+    async def mute(self, ctx, user: discord.Member = None, duration: str = None, *, reason: str = "No reason provided"):
+        if user is None or duration is None:
+            return await ctx.send(embed=discord.Embed(
+                title="Mute Failed ❌",
+                description="Please mention the user and duration! Example: `!!mute @user 10m reason`",
                 color=discord.Color.red()
-            )
-            await ctx.send(embed=embed)
+            ))
+
+        if user == ctx.author:
+            return await ctx.send(embed=discord.Embed(
+                title="Mute Failed ❌",
+                description="You cannot mute yourself!",
+                color=discord.Color.red()
+            ))
+
+        await self.mute_user(ctx, user, duration, reason)
+
+    @app_commands.command(name="mute", description="Mute a member")
+    @app_commands.describe(user="The member to mute", duration="Duration of mute (e.g. 10m, 1h)", reason="Reason for mute")
+    async def mute_slash(self, interaction: discord.Interaction, user: discord.Member, duration: str, reason: str = "No reason provided"):
+        if user == interaction.user:
+            return await interaction.response.send_message(embed=discord.Embed(
+                title="Mute Failed ❌",
+                description="You cannot mute yourself!",
+                color=discord.Color.red()
+            ), ephemeral=True)
+
+        await self.mute_user(interaction, user, duration, reason)
 
     @commands.command(name="unmute")
     async def unmute(self, ctx, user: discord.Member = None):
         if user is None:
-            embed = discord.Embed(
-                title="❌ Error",
-                description=f"{ctx.author.mention}, Please mention a user to unmute!",
+            return await ctx.send(embed=discord.Embed(
+                title="Mute Failed ❌",
+                description="Please mention a user to unmute!",
                 color=discord.Color.red()
-            )
-            return await ctx.send(embed=embed)
+            ))
 
-        try:
-            await user.timeout(None, reason="Unmuted")
+        await user.timeout(None, reason="Unmuted")
+        mute_collection.delete_one({"user_id": user.id})
 
-            embed = discord.Embed(
-                title="🔊 User Unmuted",
-                description=f"✅ **{user.mention} has been unmuted.**",
-                color=discord.Color.green()
-            )
-            await ctx.send(embed=embed)
-        except discord.Forbidden:
-            embed = discord.Embed(
-                title="❌ Error",
-                description=f"{ctx.author.mention}, I don't have permission to unmute {user.mention}!",
-                color=discord.Color.red()
-            )
-            await ctx.send(embed=embed)
-        except Exception as e:
-            embed = discord.Embed(
-                title="❌ Error",
-                description=f"{ctx.author.mention}, An error occurred while unmuting {user.mention}: `{e}`",
-                color=discord.Color.red()
-            )
-            await ctx.send(embed=embed)
-
-    @app_commands.command(name="mute", description="Mute a user for a specific duration (in minutes).")
-    async def mute_slash(self, interaction: discord.Interaction, user: discord.Member, duration: int, reason: str = "No reason provided"):
-        if user == interaction.user:
-            embed = discord.Embed(
-                title="❌ Error",
-                description=f"{interaction.user.mention}, You cannot mute yourself!",
-                color=discord.Color.red()
-            )
-            return await interaction.response.send_message(embed=embed)
-
-        try:
-            duration_td = parse_duration(str(duration))  # Ensure `duration` is passed as a string like "10m", "1h", "1d"
-            if duration_td is None:
-                embed = discord.Embed(
-                    title="❌ Error",
-                    description=f"{interaction.user.mention}, Invalid duration format! Use `Xm`, `Xh`, or `Xd` (e.g., `10m`, `2h`, `1d`).",
-                    color=discord.Color.red()
-                )
-                return await interaction.response.send_message(embed=embed)
-
-            await user.timeout(timedelta(minutes=duration_td), reason=reason)
-            self.muted_users[user.id] = (datetime.utcnow() + timedelta(minutes=duration_td), interaction.channel.id, interaction.guild.id)
-
-            embed = discord.Embed(
-                title="🔇 User Muted",
-                description=f"✅ **{user.mention} has been muted for `{duration}` minutes.**",
-                color=discord.Color.orange()
-            )
-            embed.add_field(name="Reason", value=reason, inline=False)
-            await interaction.response.send_message(embed=embed)
-        except discord.Forbidden:
-            embed = discord.Embed(
-                title="❌ Error",
-                description=f"{interaction.user.mention}, I don't have permission to mute {user.mention}!",
-                color=discord.Color.red()
-            )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-        except Exception as e:
-            embed = discord.Embed(
-                title="❌ Error",
-                description=f"{interaction.user.mention}, An error occurred while muting {user.mention}: `{e}`",
-                color=discord.Color.red()
-            )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @app_commands.command(name="unmute", description="Unmute a user.")
+        await ctx.send(embed=discord.Embed(
+            title="🔊 User Unmuted",
+            description=f"{user.mention} has been unmuted.",
+            color=discord.Color.green()
+        ))
+    @app_commands.command(name="unmute", description="Unmute a member")
+    @app_commands.describe(user="The member to unmute")
     async def unmute_slash(self, interaction: discord.Interaction, user: discord.Member):
-        if user == interaction.user:
-            embed = discord.Embed(
-                title="❌ Error",
-                description=f"{interaction.user.mention}, You cannot unmute yourself!",
-                color=discord.Color.red()
-            )
-            return await interaction.response.send_message(embed=embed, ephemeral=True)
+        await user.timeout(None, reason="Unmuted")
+        mute_collection.delete_one({"user_id": user.id})
 
-        try:
-            await user.timeout(None, reason="Unmuted")
-
-            embed = discord.Embed(
-                title="🔊 User Unmuted",
-                description=f"✅ **{user.mention} has been unmuted.**",
-                color=discord.Color.green()
-            )
-            await interaction.response.send_message(embed=embed)
-        except discord.Forbidden:
-            embed = discord.Embed(
-                title="❌ Error",
-                description=f"{interaction.user.mention}, I don't have permission to unmute {user.mention}!",
-                color=discord.Color.red()
-            )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-        except Exception as e:
-            embed = discord.Embed(
-                title="❌ Error",
-                description=f"{interaction.user.mention}, An error occurred while unmuting {user.mention}: `{e}`",
-                color=discord.Color.red()
-            )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-
+        embed = discord.Embed(
+            title="🔊 User Unmuted",
+            description=f"{user.mention} has been unmuted.",
+            color=discord.Color.green()
+        )
+        await interaction.response.send_message(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(Mute(bot))
+
