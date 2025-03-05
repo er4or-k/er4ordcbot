@@ -5,7 +5,8 @@ from discord.ui import Button, View
 from pymongo import MongoClient
 import asyncio
 import datetime
-from database.models import warnings, warn_config
+from mods.utils import send_warn_log  # ✅ Keep this
+from database.models import warnings, warn_config  # ✅ Import Both Models
 
 class Warn(commands.Cog):
     def __init__(self, bot):
@@ -20,23 +21,25 @@ class Warn(commands.Cog):
             "timestamp": datetime.datetime.now(),
         }
     #guild settings
-    def guild_settings(self, guild_id):
-        existing = warn_config.find_one({"guild_id":guild_id})
+    async def guild_settings(self, guild_id):
+        existing = await warn_config.find_one({"guild_id":guild_id})
         if not existing :
-            warn_config.insert_one({
+            await warn_config.insert_one({
                 "guild_id": guild_id,
                 "log_channel": None,
                 "warn_limit": 3,
                 "mute_time": 600,
                 "auto_mute": True
             })
+            await self.guild_settings(guild_id)
 
 
     #!!warn   
     @commands.command()
     @commands.has_permissions(moderate_members=True)
     @commands.bot_has_permissions(moderate_members=True)
-    async def warn(self, ctx, member:discord.Member = None, *,reason="No Reason Provided"):
+    async def warn(self, ctx, member: discord.Member = None, *, reason="No Reason Provided"):
+
         if member is None:
             embed = discord.Embed(
                 title="Warn Failed ❌",
@@ -44,6 +47,8 @@ class Warn(commands.Cog):
                 color=discord.Color.orange()
             )
             return await ctx.send(embed=embed)
+        
+
 
         if member == ctx.author:
             embed = discord.Embed(
@@ -61,8 +66,8 @@ class Warn(commands.Cog):
             )
             return await ctx.send(embed=embed)   
         
-        self.guild_settings(ctx.guild.id)
-        guild_settings = warn_config.find_one({"guild_id": ctx.guild.id})
+        await self.guild_settings(ctx.guild.id)
+        guild_settings = await warn_config.find_one({"guild_id": ctx.guild.id})
         if not guild_settings:
             guild_settings = {"log_channel": None}
 
@@ -78,7 +83,9 @@ class Warn(commands.Cog):
    
         
         warndata = self.warn_data(ctx.guild, member, ctx.author, reason)
-        warnings.insert_one(warndata)
+        await warnings.insert_one(warndata)
+
+        await send_warn_log(self.bot, ctx.guild, member, ctx.author, reason, guild_settings)  # Add Here 🔥✅
 
         embed = discord.Embed(
             title="User Warned⚠️",
@@ -102,6 +109,9 @@ class Warn(commands.Cog):
     @app_commands.command(name="warn", description="Warn A User")
     @app_commands.checks.has_permissions(moderate_members=True)
     async def warn_slash(self, interaction: discord.Interaction, member:discord.Member, reason: str="No Reason Provided"):
+
+
+
         if member.top_role >= interaction.user.top_role:
             embed = discord.Embed(
                 title="Permission Denied ❌",
@@ -113,15 +123,16 @@ class Warn(commands.Cog):
 
 
         if member == interaction.user:
-            embed = discord.Embed(
-                title="Warn Failed ❌",
-                description=f"{interaction.user.mention} You Can't Warn You're Self",
-                colour= discord.Colour.orange()
-            )
-            await interaction.response.send_message(embed=embed)
-            return
-        self.guild_settings(interaction.guild.id)
-        guild_settings = warn_config.find_one({"guild_id": interaction.guild.id})
+           await interaction.response.defer(thinking=True)
+           embed = discord.Embed(
+               title="Warn Failed ❌",
+               description=f"{interaction.user.mention} You Can't Warn Yourself",
+               colour=discord.Colour.orange()
+           )
+           await interaction.followup.send(embed=embed, ephemeral=True)
+           return
+        await self.guild_settings(interaction.guild.id)
+        guild_settings = await warn_config.find_one({"guild_id": interaction.guild.id})
         if not guild_settings:
             guild_settings = {"log_channel": None}
 
@@ -138,7 +149,9 @@ class Warn(commands.Cog):
             return
 
         warndata = self.warn_data(interaction.guild, member, interaction.user, reason)
-        warnings.insert_one(warndata)
+        await warnings.insert_one(warndata)
+
+        await send_warn_log(self.bot, interaction.guild, member, interaction.user, reason, guild_settings)
 
         embed = discord.Embed(
              title="User Warned⚠️",
@@ -166,7 +179,7 @@ class Warn(commands.Cog):
             if not interaction.user.guild_permissions.administrator:
                return await interaction.response.send_message("You don't have permission!")
             channel = await self.guild.create_text_channel("warn_logs")
-            warn_config.update_one({"guild_id":self.guild.id}, {"$set": {"log_channel": channel.id}})
+            await warn_config.update_one({"guild_id":self.guild.id}, {"$set": {"log_channel": channel.id}})
             embed = discord.Embed(
                 title= "Warns Log Channel Created ✅",
                 description= f"Channel= {channel.mention}",
