@@ -3,12 +3,8 @@ from discord.ext import commands, tasks
 from discord import app_commands
 from datetime import timedelta, datetime
 import re
-
+from database.models import mute_collection
 from pymongo import MongoClient
-
-client = MongoClient("mongodb+srv://kiranpoo7ary:FPcsopE32NSR1zfP@cluster0.leb3q.mongodb.net/afk_db?retryWrites=true&w=majority&tlsAllowInvalidCertificates=true")
-db = client["er4orbot"]
-mute_collection = db["mutes"]
 
 def parse_duration(duration: str) -> int:
     match = re.match(r"(\d+)([mhd])", duration.lower())

@@ -3,12 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 from pymongo import MongoClient
 import datetime
-
-# MongoDB setup
-client = MongoClient('mongodb+srv://kiranpoo7ary:FPcsopE32NSR1zfP@cluster0.leb3q.mongodb.net/afk_db?retryWrites=true&w=majority&tlsAllowInvalidCertificates=true')  # Replace with your MongoDB connection string
-db = client['afk_db']
-afk_collection = db['afk_data']
-
+from database.models import afk_collection
 class AFK(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot

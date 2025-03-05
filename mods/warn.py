@@ -5,16 +5,12 @@ from discord.ui import Button, View
 from pymongo import MongoClient
 import asyncio
 import datetime
-
-MONGO_URI = "mongodb+srv://kiranpoo7ary:FPcsopE32NSR1zfP@cluster0.leb3q.mongodb.net/afk_db?retryWrites=true&w=majority&tlsAllowInvalidCertificates=true"
-client = MongoClient(MONGO_URI)
-db = client["warn_db"]
-warnings = db["warnings"]
-settings = db["settings"]
+from database.models import warnings, warn_config
 
 class Warn(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+    #warn data
     def warn_data(self, guild, user, moderator, reason):
         return {
             "guild_id": guild.id,
@@ -22,8 +18,20 @@ class Warn(commands.Cog):
             "reason": reason,
             "moderator": moderator.id,
             "timestamp": datetime.datetime.now(),
-            
         }
+    #guild settings
+    def guild_settings(self, guild_id):
+        existing = warn_config.find_one({"guild_id":guild_id})
+        if not existing :
+            warn_config.insert_one({
+                "guild_id": guild_id,
+                "log_channel": None,
+                "warn_limit": 3,
+                "mute_time": 600,
+                "auto_mute": True
+            })
+
+
     #!!warn   
     @commands.command()
     @commands.has_permissions(moderate_members=True)
@@ -51,7 +59,23 @@ class Warn(commands.Cog):
                 description=f"{ctx.author.mention},You can't warn {member.mention} because they have equal or higher permissions!",
                 color=discord.Color.orange()
             )
-            return await ctx.send(embed=embed)      
+            return await ctx.send(embed=embed)   
+        
+        self.guild_settings(ctx.guild.id)
+        guild_settings = warn_config.find_one({"guild_id": ctx.guild.id})
+        if not guild_settings:
+            guild_settings = {"log_channel": None}
+
+        if not guild_settings["log_channel"]:  # Step 3: Warn Log Channel Suggestion
+            embed = discord.Embed(
+                title="⚙️ Warn System Logs Setup",
+                description="It seems **Warn Log Channel** is not set up.\nWould you like to create one automatically?",
+                color=discord.Color.blue()
+            )
+            view = self.LogChannelView(ctx.guild)
+            await ctx.send(embed=embed, view=view)
+            return
+   
         
         warndata = self.warn_data(ctx.guild, member, ctx.author, reason)
         warnings.insert_one(warndata)
@@ -72,6 +96,8 @@ class Warn(commands.Cog):
             embed.description = "I don't have permission to ban members!"
         elif isinstance(error, commands.BadArgument):
             embed.description = f"{ctx.author.mention},Invalid user! Please mention a valid member."
+        await ctx.send(embed=embed)
+
     #/warn
     @app_commands.command(name="warn", description="Warn A User")
     @app_commands.checks.has_permissions(moderate_members=True)
@@ -84,7 +110,7 @@ class Warn(commands.Cog):
             )
             return await interaction.response.send_message(embed=embed)
 
-        await member.ban(reason=reason)
+
 
         if member == interaction.user:
             embed = discord.Embed(
@@ -93,6 +119,23 @@ class Warn(commands.Cog):
                 colour= discord.Colour.orange()
             )
             await interaction.response.send_message(embed=embed)
+            return
+        self.guild_settings(interaction.guild.id)
+        guild_settings = warn_config.find_one({"guild_id": interaction.guild.id})
+        if not guild_settings:
+            guild_settings = {"log_channel": None}
+
+
+        if not guild_settings["log_channel"]:  # Step 3 Here ✅
+            embed = discord.Embed(
+                title="⚙️ Warn System Logs Setup",
+                description="It seems **Warn Log Channel** is not set up.\nWould you like to create one automatically?",
+                color=discord.Color.blue()
+            )
+
+            view = self.LogChannelView(interaction.guild)
+            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+            return
 
         warndata = self.warn_data(interaction.guild, member, interaction.user, reason)
         warnings.insert_one(warndata)
@@ -107,14 +150,40 @@ class Warn(commands.Cog):
     
     @warn_slash.error
     async def warn_slash_error(self, interaction: discord.Interaction, error):
-        embed = discord.Embed(title="Ban Failed ❌", color=discord.Color.orange())
+        embed = discord.Embed(title="Warn Failed ❌", color=discord.Color.orange())
         if isinstance(error, app_commands.MissingPermissions):
             embed.description = f"{interaction.user.mention},You don't have permission to use this command!"
-        elif isinstance(error, app_commands.BotMissingPermissions):
-            embed.description = "I don't have permission to ban members!"
         elif isinstance(error, app_commands.CommandInvokeError):
             embed.description = f"Invalid User! {interaction.user.mention},Please mention a valid member."
         await interaction.response.send_message(embed=embed)
+    class LogChannelView(View):
+        def __init__(self, guild):
+            super().__init__(timeout=60)
+            self.guild = guild
+        
+        @discord.ui.button(label="✅ Create Channel", style=discord.ButtonStyle.green)
+        async def create_channel(self, interaction: discord.Interaction, button: Button):
+            if not interaction.user.guild_permissions.administrator:
+               return await interaction.response.send_message("You don't have permission!")
+            channel = await self.guild.create_text_channel("warn_logs")
+            warn_config.update_one({"guild_id":self.guild.id}, {"$set": {"log_channel": channel.id}})
+            embed = discord.Embed(
+                title= "Warns Log Channel Created ✅",
+                description= f"Channel= {channel.mention}",
+                colour= discord.Colour.green()
+            )
+            await interaction.response.edit_message(embed=embed, view=None)
+            self.stop()
+            
+        @discord.ui.button(label="❌ Cancel ", style=discord.ButtonStyle.green)
+        async def cancel(self, interaction: discord.Interaction, button: Button):
+            embed= discord.Embed(
+                title="Warn Logs Setup Cancelled❌",
+                colour= discord.Colour.red()
+            )
+            await interaction.response.edit_message(embed=embed, view=None)
+            self.stop()
+
 
 
 async def setup(bot):
